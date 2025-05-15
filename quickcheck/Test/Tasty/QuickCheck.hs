@@ -25,8 +25,6 @@ import Test.Tasty ( testGroup, Timeout(..) )
 import Test.Tasty.Providers
 import Test.Tasty.Options
 import qualified Test.QuickCheck as QC
-import qualified Test.QuickCheck.Property as QCP
-import qualified Test.QuickCheck.State as QC
 import Test.Tasty.Runners (formatMessage, emptyProgress)
 import Test.QuickCheck hiding -- for re-export
   ( quickCheck
@@ -271,7 +269,6 @@ instance IsTest QC where
       (qcOutputNl ++
         (if putReplayInDesc then replayMsg else ""))
 
-
 -- | Like the original 'QC.quickCheck' but is reporting progress using tasty
 -- callback.
 --
@@ -279,25 +276,23 @@ quickCheck :: (Progress -> IO ())
            -> QC.Args
            -> QC.Property
            -> IO QC.Result
-quickCheck yieldProgress args
-  = (.) (QC.quickCheckWithResult args)
-  $ QCP.callback
-  $ QCP.PostTest QCP.NotCounterexample
-  $ \st@QC.MkState {QC.maxSuccessTests, QC.numSuccessTests} _ ->
-    yieldProgress $
-      if QC.numTotTryShrinks st > 0 then
-        emptyProgress {
-            progressText = showShrinkCount st
-          }
-      else
-        emptyProgress {
-            progressPercent = fromIntegral numSuccessTests / fromIntegral maxSuccessTests
-          }
+quickCheck yieldProgress args =
+  (.) (QC.quickCheckWithResult args)
+  $ QC.withProgress $ \p ->
+      yieldProgress $
+        if QC.numtotalshrinks p > 0 then
+          emptyProgress {
+              progressText = showShrinkCount p
+            }
+        else
+          emptyProgress {
+              progressPercent = fromIntegral (QC.numpassed p) / fromIntegral (QC.maxtests p)
+            }
 
 -- Based on 'QuickCheck.Test.failureSummaryAndReason'.
-showShrinkCount :: QC.State -> String
-showShrinkCount st = show (QC.numSuccessShrinks st) ++ " shrink" ++ plural
-  where plural = if QC.numSuccessShrinks st == 1 then "" else "s"
+showShrinkCount :: QC.TestProgress -> String
+showShrinkCount st = show (QC.numshrinks st) ++ " shrink" ++ plural
+  where plural = if QC.numshrinks st == 1 then "" else "s"
 
 successful :: QC.Result -> Bool
 successful r =
